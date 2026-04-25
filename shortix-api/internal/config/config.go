@@ -35,6 +35,7 @@ type Config struct {
 	RateLimitWindow        time.Duration
 	RateLimitLoginMax      int
 	RateLimitForgotPassMax int
+	BaseURL                string
 }
 
 func Load() *Config {
@@ -68,6 +69,7 @@ func Load() *Config {
 		RateLimitWindow:        getEnvDuration("RATE_LIMIT_WINDOW", time.Minute),
 		RateLimitLoginMax:      getEnvInt("RATE_LIMIT_LOGIN_MAX", 10),
 		RateLimitForgotPassMax: getEnvInt("RATE_LIMIT_FORGOT_PASSWORD_MAX", 5),
+		BaseURL:                getEnv("BASE_URL", "http://localhost:8080"),
 	}
 }
 

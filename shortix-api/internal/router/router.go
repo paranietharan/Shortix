@@ -11,6 +11,7 @@ import (
 func NewRouter(
 	cfg *config.Config,
 	authHandler *handler.AuthHandler,
+	urlHandler *handler.URLHandler,
 	authMW *middleware.AuthMiddleware,
 ) *gin.Engine {
 	if cfg.AppEnv == "production" {
@@ -22,6 +23,9 @@ func NewRouter(
 
 	loginLimiter := middleware.NewRateLimiter(cfg.RateLimitWindow, cfg.RateLimitLoginMax)
 	forgotPasswordLimiter := middleware.NewRateLimiter(cfg.RateLimitWindow, cfg.RateLimitForgotPassMax)
+
+	// Redirect path (Critical Path)
+	r.GET("/:short_code", urlHandler.Redirect)
 
 	auth := r.Group("/auth")
 	{
@@ -42,12 +46,13 @@ func NewRouter(
 		}
 	}
 
-	protected := r.Group("/")
-	protected.Use(authMW.RequireAuth())
+	// URL Operations
+	urls := r.Group("/urls")
+	urls.Use(authMW.RequireAuth())
 	{
-		protected.GET("/owner-only", middleware.RequireRoles("OWNER"), authHandler.OwnerOnly)
-		protected.GET("/admin-only", middleware.RequireRoles("ADMIN"), authHandler.AdminOnly)
-		protected.GET("/admin-owner", middleware.RequireRoles("ADMIN", "OWNER"), authHandler.AdminOwner)
+		urls.POST("", urlHandler.CreateURL)
+		urls.GET("/:id/analytics", urlHandler.GetAnalytics)
+		urls.DELETE("/:id", urlHandler.DeleteURL)
 	}
 
 	return r

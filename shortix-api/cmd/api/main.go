@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"shortix-api/database/runner"
 	"shortix-api/internal/config"
 	"shortix-api/internal/handler"
 	"shortix-api/internal/middleware"
@@ -37,6 +38,21 @@ func main() {
 		log.Fatalf("database ping failed: %v", err)
 	}
 
+	// Run Migrations
+	migrationRunner := runner.MigrationRunner{
+		SourceDir: "file://database/migrations",
+		DBURL:     cfg.DatabaseURL,
+	}
+	if err := migrationRunner.Up(); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
+
+	// Run Seeds
+	seedRunner := runner.NewSeedRunner(db, cfg)
+	if err := seedRunner.Run(ctx); err != nil {
+		log.Fatalf("failed to run seeds: %v", err)
+	}
+
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisAddr,
 		Password: cfg.RedisPassword,
@@ -52,13 +68,23 @@ func main() {
 	sessionRepo := repository.NewPostgresSessionRepository(db)
 	otpRepo := repository.NewRedisOTPRepository(redisClient)
 
+	// URL Service Repositories
+	urlRepo := repository.NewURLRepository(db)
+	clickRepo := repository.NewClickRepository(db)
+	cacheRepo := repository.NewCacheRepository(redisClient)
+
 	tokenManager := service.NewTokenManager(cfg.JWTSecret)
 	emailSender := service.NewSMTPSender(cfg, logger)
 	authService := service.NewAuthService(userRepo, sessionRepo, otpRepo, emailSender, tokenManager, cfg, logger)
 	authHandler := handler.NewAuthHandler(authService)
+
+	// URL Service
+	urlService := service.NewURLService(urlRepo, clickRepo, cacheRepo, cfg.BaseURL)
+	urlHandler := handler.NewURLHandler(urlService)
+
 	authMW := middleware.NewAuthMiddleware(tokenManager, sessionRepo)
 
-	app := router.NewRouter(cfg, authHandler, authMW)
+	app := router.NewRouter(cfg, authHandler, urlHandler, authMW)
 
 	serverErr := make(chan error, 1)
 	go func() {

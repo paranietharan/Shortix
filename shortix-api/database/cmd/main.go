@@ -127,7 +127,7 @@ func runMigrate(dsn, action string, version int, root string) error {
 	}
 
 	dir := filepath.Join(root, "database", "migrations")
-	r := migrate.Runner{SourceDir: "file://" + dir, DBURL: dsn}
+	r := migrate.MigrationRunner{SourceDir: "file://" + dir, DBURL: dsn}
 
 	switch action {
 	case "up":
