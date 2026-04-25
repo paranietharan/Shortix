@@ -15,7 +15,7 @@ import (
 )
 
 type URLService interface {
-	CreateURL(ctx context.Context, userID string, req *dto.CreateURLRequest) (*dto.CreateURLResponse, error)
+	CreateURL(ctx context.Context, userID string, req *dto.CreateURLRequest) (*dto.CreateURLResponse, bool, error)
 	GetRedirectURL(ctx context.Context, shortCode string, clickData *model.Click) (string, error)
 	GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error)
 	DeleteURL(ctx context.Context, urlID string, userID string, role string) error
@@ -49,10 +49,26 @@ func NewURLService(
 	return s
 }
 
-func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.CreateURLRequest) (*dto.CreateURLResponse, error) {
+func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.CreateURLRequest) (*dto.CreateURLResponse, bool, error) {
 	uID, err := uuid.Parse(userID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user id")
+		return nil, false, fmt.Errorf("invalid user id")
+	}
+
+	// Deduplication: Check if long URL already exists for this user (only if NO custom alias is requested)
+	if req.CustomAlias == nil {
+		existing, err := s.urlRepo.GetByLongURLAndUser(ctx, req.LongURL, userID)
+		if err == nil && existing != nil {
+			return &dto.CreateURLResponse{
+				ID:          existing.ID,
+				LongURL:     existing.LongURL,
+				ShortCode:   existing.ShortCode,
+				CustomAlias: existing.CustomAlias,
+				ExpiresAt:   existing.ExpiresAt,
+				CreatedAt:   existing.CreatedAt,
+				ShortURL:    fmt.Sprintf("%s/%s", s.baseURL, existing.ShortCode),
+			}, false, nil
+		}
 	}
 
 	url := &model.URL{
@@ -66,10 +82,10 @@ func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.Crea
 		// Validate alias availability
 		available, err := s.urlRepo.IsAliasAvailable(ctx, *req.CustomAlias)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if !available {
-			return nil, fmt.Errorf("custom alias already taken")
+			return nil, false, fmt.Errorf("custom alias already taken")
 		}
 		url.ShortCode = *req.CustomAlias
 	} else {
@@ -78,12 +94,12 @@ func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.Crea
 		for i := 0; i < maxRetries; i++ {
 			code, err := utils.GenerateShortCode(6)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			available, err := s.urlRepo.IsAliasAvailable(ctx, code)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			if available {
@@ -92,13 +108,13 @@ func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.Crea
 			}
 
 			if i == maxRetries-1 {
-				return nil, fmt.Errorf("failed to generate unique short code")
+				return nil, false, fmt.Errorf("failed to generate unique short code")
 			}
 		}
 	}
 
 	if err := s.urlRepo.Create(ctx, url); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	return &dto.CreateURLResponse{
@@ -109,7 +125,7 @@ func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.Crea
 		ExpiresAt:   url.ExpiresAt,
 		CreatedAt:   url.CreatedAt,
 		ShortURL:    fmt.Sprintf("%s/%s", s.baseURL, url.ShortCode),
-	}, nil
+	}, true, nil
 }
 
 func (s *urlService) GetRedirectURL(ctx context.Context, shortCode string, clickData *model.Click) (string, error) {

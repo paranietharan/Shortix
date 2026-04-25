@@ -35,13 +35,18 @@ func (h *URLHandler) CreateURL(c *gin.Context) {
 		return
 	}
 
-	res, err := h.urlService.CreateURL(c.Request.Context(), userID.(string), &req)
+	res, isNew, err := h.urlService.CreateURL(c.Request.Context(), userID.(string), &req)
 	if err != nil {
 		response.Error(c.Writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	response.Success(c.Writer, http.StatusCreated, "URL shortened successfully", res)
+	message := "URL shortened successfully"
+	if !isNew {
+		message = "URL already exists"
+	}
+
+	response.Success(c.Writer, http.StatusCreated, message, res)
 }
 
 func (h *URLHandler) Redirect(c *gin.Context) {
