@@ -44,6 +44,21 @@ func (r Runner) Down() error {
 	return nil
 }
 
+func (r Runner) Force(version int) error {
+	m, err := migrate.New(r.SourceDir, r.DBURL)
+	if err != nil {
+		return fmt.Errorf("create migrate instance: %w", err)
+	}
+	defer closeMigrate(m)
+
+	if err := m.Force(version); err != nil {
+		return fmt.Errorf("force migration version %d: %w", version, err)
+	}
+
+	log.Printf("migration version forced to %d", version)
+	return nil
+}
+
 func closeMigrate(m *migrate.Migrate) {
 	srcErr, dbErr := m.Close()
 	if srcErr != nil {
