@@ -52,14 +52,7 @@ func NewRouter(
 	{
 		urls.POST("", urlHandler.CreateURL)
 		urls.GET("/:id/analytics", urlHandler.GetAnalytics)
-	}
-
-	protected := r.Group("/")
-	protected.Use(authMW.RequireAuth())
-	{
-		protected.GET("/owner-only", middleware.RequireRoles("OWNER"), authHandler.OwnerOnly)
-		protected.GET("/admin-only", middleware.RequireRoles("ADMIN"), authHandler.AdminOnly)
-		protected.GET("/admin-owner", middleware.RequireRoles("ADMIN", "OWNER"), authHandler.AdminOwner)
+		urls.DELETE("/:id", urlHandler.DeleteURL)
 	}
 
 	return r

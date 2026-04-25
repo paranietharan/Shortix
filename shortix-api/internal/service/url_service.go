@@ -8,6 +8,7 @@ import (
 	"shortix-api/internal/model"
 	"shortix-api/internal/repository"
 	"shortix-api/pkg/utils"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ type URLService interface {
 	CreateURL(ctx context.Context, userID string, req *dto.CreateURLRequest) (*dto.CreateURLResponse, error)
 	GetRedirectURL(ctx context.Context, shortCode string, clickData *model.Click) (string, error)
 	GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error)
+	DeleteURL(ctx context.Context, urlID string, userID string, role string) error
 }
 
 type urlService struct {
@@ -112,12 +114,13 @@ func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.Crea
 
 func (s *urlService) GetRedirectURL(ctx context.Context, shortCode string, clickData *model.Click) (string, error) {
 	// 1. Check Redis cache
-	longURL, err := s.cacheRepo.Get(ctx, "url:"+shortCode)
-	if err == nil && longURL != "" {
+	cacheVal, err := s.cacheRepo.Get(ctx, "url:"+shortCode)
+	if err == nil && cacheVal != "" {
 		// Cache hit
-		clickData.URLID = s.extractIDFromCache(longURL) // Optional: store ID in cache value too if needed
+		longURL := s.parseCacheValue(cacheVal, clickData)
+		log.Printf("Cache hit for %s, tracking click for URL ID: %s", shortCode, clickData.URLID)
 		s.TrackClick(clickData)
-		return s.extractURLFromCache(longURL), nil
+		return longURL, nil
 	}
 
 	// 2. If cache miss, query DB
@@ -153,18 +156,24 @@ func (s *urlService) GetRedirectURL(ctx context.Context, shortCode string, click
 }
 
 func (s *urlService) TrackClick(click *model.Click) {
+	log.Printf("Queuing click analytics for URL ID: %s", click.URLID)
 	select {
 	case s.analyticsCh <- click:
+		log.Println("Click analytics queued successfully")
 	default:
 		log.Println("Analytics queue full, dropping event")
 	}
 }
 
 func (s *urlService) processAnalytics() {
+	log.Println("Analytics background worker started")
 	for click := range s.analyticsCh {
+		log.Printf("Processing click analytics for URL ID: %s", click.URLID)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := s.clickRepo.Create(ctx, click); err != nil {
-			log.Printf("Failed to save analytics: %v", err)
+			log.Printf("CRITICAL: Failed to save analytics to DB: %v", err)
+		} else {
+			log.Printf("Analytics saved successfully for URL ID: %s (Click ID: %d)", click.URLID, click.ID)
 		}
 		cancel()
 	}
@@ -174,25 +183,37 @@ func (s *urlService) GetAnalytics(ctx context.Context, urlID string) (*dto.Analy
 	return s.clickRepo.GetAnalytics(ctx, urlID)
 }
 
-// Helpers for cache value parsing
-func (s *urlService) extractIDFromCache(val string) uuid.UUID {
-	var idStr string
-	fmt.Sscanf(val, "%s|", &idStr)
-	id, _ := uuid.Parse(idStr)
-	return id
+func (s *urlService) DeleteURL(ctx context.Context, urlID string, userID string, role string) error {
+	url, err := s.urlRepo.GetByID(ctx, urlID)
+	if err != nil {
+		return err
+	}
+	if url == nil {
+		return fmt.Errorf("link not found")
+	}
+
+	// Only owner or ADMIN can delete
+	if url.UserID.String() != userID && role != "ADMIN" {
+		return fmt.Errorf("permission denied")
+	}
+
+	if err := s.urlRepo.Delete(ctx, urlID); err != nil {
+		return err
+	}
+
+	// Invalidate cache
+	_ = s.cacheRepo.Delete(ctx, "url:"+url.ShortCode)
+
+	return nil
 }
 
-func (s *urlService) extractURLFromCache(val string) string {
-	var longURL string
-	// Split by |
-	for i, char := range val {
-		if char == '|' {
-			longURL = val[i+1:]
-			break
-		}
-	}
-	if longURL == "" {
+// parseCacheValue extracts ID and long URL from "id|long_url" format
+func (s *urlService) parseCacheValue(val string, click *model.Click) string {
+	parts := strings.SplitN(val, "|", 2)
+	if len(parts) < 2 {
 		return val
 	}
-	return longURL
+	id, _ := uuid.Parse(parts[0])
+	click.URLID = id
+	return parts[1]
 }

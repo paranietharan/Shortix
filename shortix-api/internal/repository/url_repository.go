@@ -12,6 +12,7 @@ type URLRepository interface {
 	Create(ctx context.Context, url *model.URL) error
 	GetByShortCode(ctx context.Context, code string) (*model.URL, error)
 	GetByCustomAlias(ctx context.Context, alias string) (*model.URL, error)
+	GetByID(ctx context.Context, id string) (*model.URL, error)
 	Delete(ctx context.Context, id string) error
 	IsAliasAvailable(ctx context.Context, alias string) (bool, error)
 }
@@ -80,6 +81,34 @@ func (r *urlRepository) GetByCustomAlias(ctx context.Context, alias string) (*mo
 
 	var url model.URL
 	err := r.db.QueryRow(ctx, query, alias).Scan(
+		&url.ID,
+		&url.UserID,
+		&url.LongURL,
+		&url.ShortCode,
+		&url.CustomAlias,
+		&url.ExpiresAt,
+		&url.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &url, nil
+}
+
+func (r *urlRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
+	query := `
+	SELECT id, user_id, long_url, short_code, custom_alias, expires_at, created_at
+	FROM urls
+	WHERE id = $1;
+	`
+
+	var url model.URL
+	err := r.db.QueryRow(ctx, query, id).Scan(
 		&url.ID,
 		&url.UserID,
 		&url.LongURL,

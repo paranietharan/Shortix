@@ -39,16 +39,16 @@ func (s *userSeed) Run(ctx context.Context, db *pgxpool.Pool, cfg *config.Config
 		return err
 	}
 
-	// Insert owner user
+	// Insert admin user
 	query := `
 		INSERT INTO users (email, password_hash, role, is_email_verified)
-		VALUES ($1, $2, 'OWNER', TRUE)
+		VALUES ($1, $2, 'ADMIN', TRUE)
 	`
 	_, err = db.Exec(ctx, query, cfg.SeedAdminEmail, string(hashedPassword))
 	if err != nil {
 		return err
 	}
 
-	log.Printf("user seed executed: created user %s with OWNER role\n", cfg.SeedAdminEmail)
+	log.Printf("user seed executed: created user %s with ADMIN role\n", cfg.SeedAdminEmail)
 	return nil
 }

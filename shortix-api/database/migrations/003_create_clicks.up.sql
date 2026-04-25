@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS clicks (
     clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ip_address INET NULL,
     user_agent TEXT NULL,
+    device TEXT NULL,
+    referrer TEXT NULL,
 
     -- metadata
     metadata JSONB NULL,
