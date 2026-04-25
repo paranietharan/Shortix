@@ -1,4 +1,4 @@
-package migrate
+package runner
 
 import (
 	"fmt"
@@ -9,12 +9,12 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-type Runner struct {
+type MigrationRunner struct {
 	SourceDir string
 	DBURL     string
 }
 
-func (r Runner) Up() error {
+func (r MigrationRunner) Up() error {
 	m, err := migrate.New(r.SourceDir, r.DBURL)
 	if err != nil {
 		return fmt.Errorf("create migrate instance: %w", err)
@@ -29,7 +29,7 @@ func (r Runner) Up() error {
 	return nil
 }
 
-func (r Runner) Down() error {
+func (r MigrationRunner) Down() error {
 	m, err := migrate.New(r.SourceDir, r.DBURL)
 	if err != nil {
 		return fmt.Errorf("create migrate instance: %w", err)
@@ -44,7 +44,7 @@ func (r Runner) Down() error {
 	return nil
 }
 
-func (r Runner) Force(version int) error {
+func (r MigrationRunner) Force(version int) error {
 	m, err := migrate.New(r.SourceDir, r.DBURL)
 	if err != nil {
 		return fmt.Errorf("create migrate instance: %w", err)
