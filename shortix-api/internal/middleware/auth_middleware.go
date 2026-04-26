@@ -59,6 +59,33 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	}
 }
 
+func (m *AuthMiddleware) RequireRoles(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userRole, ok := RoleFromContext(c)
+		if !ok {
+			writeError(c, apperrors.ErrForbidden)
+			c.Abort()
+			return
+		}
+
+		hasRole := false
+		for _, role := range roles {
+			if userRole == role {
+				hasRole = true
+				break
+			}
+		}
+
+		if !hasRole {
+			writeError(c, apperrors.ErrForbidden)
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func extractBearerToken(header string) (string, bool) {
 	parts := strings.SplitN(header, " ", 2)
 	if len(parts) != 2 {

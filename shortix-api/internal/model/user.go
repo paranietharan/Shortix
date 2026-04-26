@@ -14,6 +14,11 @@ type User struct {
 	LastLoginIP        *string
 	LastLoginUserAgent *string
 	LastLoginDevice    *string
+	FirstName          *string
+	LastName           *string
+	ProfilePictureURL  *string
+	Bio                *string
+	PhoneNumber        *string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }

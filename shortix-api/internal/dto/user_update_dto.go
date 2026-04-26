@@ -12,3 +12,11 @@ type PasswordChangeRequest struct {
 type VerifyOTPRequest struct {
 	OTP string `json:"otp" binding:"required,len=6"`
 }
+
+type UpdateProfileRequest struct {
+	FirstName         *string `json:"first_name" binding:"omitempty,max=50"`
+	LastName          *string `json:"last_name" binding:"omitempty,max=50"`
+	ProfilePictureURL *string `json:"profile_picture_url" binding:"omitempty,url"`
+	Bio               *string `json:"bio" binding:"omitempty,max=500"`
+	PhoneNumber       *string `json:"phone_number" binding:"omitempty,max=20"`
+}

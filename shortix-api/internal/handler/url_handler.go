@@ -135,3 +135,26 @@ func (h *URLHandler) ListURLs(c *gin.Context) {
 
 	response.Success(c.Writer, http.StatusOK, "URLs fetched successfully", res)
 }
+
+func (h *URLHandler) AdminDeleteURL(c *gin.Context) {
+	urlID := c.Param("id")
+
+	userID, _ := c.Get(middleware.ContextUserIDKey)
+	role, _ := c.Get(middleware.ContextRoleKey)
+
+	err := h.urlService.DeleteURL(c.Request.Context(), urlID, userID.(string), role.(string))
+	if err != nil {
+		if err.Error() == "link not found" {
+			response.Error(c.Writer, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "permission denied" {
+			response.Error(c.Writer, http.StatusForbidden, err.Error())
+			return
+		}
+		response.Error(c.Writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c.Writer, http.StatusOK, "URL deleted successfully by admin", nil)
+}
