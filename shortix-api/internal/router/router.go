@@ -46,11 +46,25 @@ func NewRouter(
 		}
 	}
 
+	// User Account Operations (v1)
+	v1 := r.Group("/api/v1")
+	v1.Use(authMW.RequireAuth())
+	{
+		me := v1.Group("/users/me")
+		{
+			me.POST("/email/request", authHandler.RequestEmailChange)
+			me.POST("/email/verify", authHandler.VerifyEmailChange)
+			me.POST("/password/request", authHandler.RequestPasswordChange)
+			me.POST("/password/verify", authHandler.VerifyPasswordChange)
+		}
+	}
+
 	// URL Operations
 	urls := r.Group("/urls")
 	urls.Use(authMW.RequireAuth())
 	{
 		urls.POST("", urlHandler.CreateURL)
+		urls.GET("", urlHandler.ListURLs)
 		urls.GET("/:id/analytics", urlHandler.GetAnalytics)
 		urls.DELETE("/:id", urlHandler.DeleteURL)
 	}

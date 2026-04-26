@@ -17,3 +17,15 @@ type User struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
+
+type EmailChangeData struct {
+	NewEmail string `json:"new_email"`
+	OTP      string `json:"otp"`
+	Attempts int    `json:"attempts"`
+}
+
+type PasswordChangeData struct {
+	HashedNewPassword string `json:"hashed_new_password"`
+	OTP               string `json:"otp"`
+	Attempts          int    `json:"attempts"`
+}

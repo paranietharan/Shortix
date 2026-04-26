@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"shortix-api/internal/dto"
 	"shortix-api/internal/model"
 	"shortix-api/internal/repository"
@@ -19,6 +20,7 @@ type URLService interface {
 	GetRedirectURL(ctx context.Context, shortCode string, clickData *model.Click) (string, error)
 	GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error)
 	DeleteURL(ctx context.Context, urlID string, userID string, role string) error
+	ListURLs(ctx context.Context, userID string, page, limit int) (*dto.ListURLsResponse, error)
 }
 
 type urlService struct {
@@ -71,21 +73,35 @@ func (s *urlService) CreateURL(ctx context.Context, userID string, req *dto.Crea
 		}
 	}
 
+	// Default expiry logic: 2 years from now if not provided
+	expiresAt := req.ExpiresAt
+	if expiresAt == nil {
+		now := time.Now()
+		expiry := now.AddDate(2, 0, 0)
+		expiresAt = &expiry
+	}
+
 	url := &model.URL{
 		UserID:      uID,
 		LongURL:     req.LongURL,
 		CustomAlias: req.CustomAlias,
-		ExpiresAt:   req.ExpiresAt,
+		ExpiresAt:   expiresAt,
 	}
 
 	if req.CustomAlias != nil {
-		// Validate alias availability
-		available, err := s.urlRepo.IsAliasAvailable(ctx, *req.CustomAlias)
+		// Strict validation: alphanumeric and hyphen only
+		aliasRegex := regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+		if !aliasRegex.MatchString(*req.CustomAlias) {
+			return nil, false, fmt.Errorf("invalid custom alias format")
+		}
+
+		// Validate alias availability (uniqueness check)
+		exists, err := s.urlRepo.ExistsByCustomAlias(ctx, *req.CustomAlias)
 		if err != nil {
 			return nil, false, err
 		}
-		if !available {
-			return nil, false, fmt.Errorf("custom alias already taken")
+		if exists {
+			return nil, false, fmt.Errorf("custom alias already exists")
 		}
 		url.ShortCode = *req.CustomAlias
 	} else {
@@ -232,4 +248,30 @@ func (s *urlService) parseCacheValue(val string, click *model.Click) string {
 	id, _ := uuid.Parse(parts[0])
 	click.URLID = id
 	return parts[1]
+}
+
+func (s *urlService) ListURLs(ctx context.Context, userID string, page, limit int) (*dto.ListURLsResponse, error) {
+	urls, total, err := s.urlRepo.ListByUser(ctx, userID, page, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var urlResponses []dto.URLResponse
+	for _, u := range urls {
+		urlResponses = append(urlResponses, dto.URLResponse{
+			ID:          u.ID,
+			LongURL:     u.LongURL,
+			ShortCode:   u.ShortCode,
+			CustomAlias: u.CustomAlias,
+			ExpiresAt:   u.ExpiresAt,
+			CreatedAt:   u.CreatedAt,
+		})
+	}
+
+	return &dto.ListURLsResponse{
+		URLs:  urlResponses,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	}, nil
 }

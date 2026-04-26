@@ -112,3 +112,26 @@ func (h *URLHandler) DeleteURL(c *gin.Context) {
 
 	response.Success(c.Writer, http.StatusOK, "URL deleted successfully", nil)
 }
+
+func (h *URLHandler) ListURLs(c *gin.Context) {
+	// Get userID from auth middleware
+	userID, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		response.Error(c.Writer, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var query dto.PaginationQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		response.Error(c.Writer, http.StatusBadRequest, "Invalid pagination parameters")
+		return
+	}
+
+	res, err := h.urlService.ListURLs(c.Request.Context(), userID.(string), query.Page, query.Limit)
+	if err != nil {
+		response.Error(c.Writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c.Writer, http.StatusOK, "URLs fetched successfully", res)
+}

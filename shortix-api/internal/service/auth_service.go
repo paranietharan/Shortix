@@ -478,6 +478,157 @@ func (s *AuthService) ResetPassword(ctx context.Context, req dto.ResetPasswordRe
 	return &dto.MessageResponse{Message: "password reset successful"}, nil
 }
 
+func (s *AuthService) RequestEmailChange(ctx context.Context, userID, newEmail string) (*dto.MessageResponse, error) {
+	newEmail = normalizeEmail(newEmail)
+
+	// Check if email already exists
+	_, err := s.users.GetByEmail(ctx, newEmail)
+	if err == nil {
+		return nil, apperrors.ErrUserAlreadyExists
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		s.logger.Error("check email exists failed", "error", err, "email", newEmail)
+		return nil, apperrors.InternalServerError()
+	}
+
+	otp, err := generateOTP(6)
+	if err != nil {
+		s.logger.Error("generate email change otp failed", "error", err)
+		return nil, apperrors.InternalServerError()
+	}
+
+	data := &model.EmailChangeData{
+		NewEmail: newEmail,
+		OTP:      otp,
+		Attempts: 0,
+	}
+
+	if err := s.otpStore.SetEmailChangeData(ctx, userID, data, 10*time.Minute); err != nil {
+		s.logger.Error("store email change data failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	s.sendEmailBestEffort(ctx, newEmail, "Verify your new Shortix email", "email_change_otp.html", map[string]any{
+		"OTP":              otp,
+		"ExpiresInMinutes": 10,
+		"AppName":          "Shortix",
+		"Year":             s.now().UTC().Year(),
+	})
+
+	return &dto.MessageResponse{Message: "verification otp sent to new email"}, nil
+}
+
+func (s *AuthService) VerifyEmailChange(ctx context.Context, userID, otp string) (*dto.MessageResponse, error) {
+	data, err := s.otpStore.GetEmailChangeData(ctx, userID)
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, apperrors.ErrInvalidOTP
+		}
+		s.logger.Error("load email change data failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	if !constantTimeEqual(data.OTP, otp) {
+		data.Attempts++
+		if data.Attempts >= 5 {
+			_ = s.otpStore.DeleteEmailChangeData(ctx, userID)
+			return nil, apperrors.ErrInvalidOTP
+		}
+		_ = s.otpStore.SetEmailChangeData(ctx, userID, data, 10*time.Minute)
+		return nil, apperrors.ErrInvalidOTP
+	}
+
+	if err := s.users.UpdateEmail(ctx, userID, data.NewEmail); err != nil {
+		s.logger.Error("update email failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	_ = s.otpStore.DeleteEmailChangeData(ctx, userID)
+	return &dto.MessageResponse{Message: "email updated successfully"}, nil
+}
+
+func (s *AuthService) RequestPasswordChange(ctx context.Context, userID, currentPass, newPass string) (*dto.MessageResponse, error) {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.ErrUserNotFound
+		}
+		s.logger.Error("load user for password change failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPass)); err != nil {
+		return nil, apperrors.ErrInvalidCredentials
+	}
+
+	hashedNewPassword, err := bcrypt.GenerateFromPassword([]byte(newPass), s.cfg.BcryptCost)
+	if err != nil {
+		s.logger.Error("hash new password failed", "error", err)
+		return nil, apperrors.InternalServerError()
+	}
+
+	otp, err := generateOTP(6)
+	if err != nil {
+		s.logger.Error("generate password change otp failed", "error", err)
+		return nil, apperrors.InternalServerError()
+	}
+
+	data := &model.PasswordChangeData{
+		HashedNewPassword: string(hashedNewPassword),
+		OTP:               otp,
+		Attempts:          0,
+	}
+
+	if err := s.otpStore.SetPasswordChangeData(ctx, userID, data, 10*time.Minute); err != nil {
+		s.logger.Error("store password change data failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	s.sendEmailBestEffort(ctx, user.Email, "Shortix password change verification code", "password_change_otp.html", map[string]any{
+		"OTP":              otp,
+		"ExpiresInMinutes": 10,
+		"AppName":          "Shortix",
+		"Year":             s.now().UTC().Year(),
+	})
+
+	return &dto.MessageResponse{Message: "verification otp sent to your email"}, nil
+}
+
+func (s *AuthService) VerifyPasswordChange(ctx context.Context, userID, otp string) (*dto.MessageResponse, error) {
+	data, err := s.otpStore.GetPasswordChangeData(ctx, userID)
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, apperrors.ErrInvalidOTP
+		}
+		s.logger.Error("load password change data failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	if !constantTimeEqual(data.OTP, otp) {
+		data.Attempts++
+		if data.Attempts >= 5 {
+			_ = s.otpStore.DeletePasswordChangeData(ctx, userID)
+			return nil, apperrors.ErrInvalidOTP
+		}
+		_ = s.otpStore.SetPasswordChangeData(ctx, userID, data, 10*time.Minute)
+		return nil, apperrors.ErrInvalidOTP
+	}
+
+	if err := s.users.UpdatePassword(ctx, userID, data.HashedNewPassword); err != nil {
+		s.logger.Error("update password failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+
+	if err := s.sessions.RevokeByUser(ctx, userID); err != nil {
+		s.logger.Error("revoke user sessions failed after password change", "error", err, "user_id", userID)
+	}
+
+	_ = s.otpStore.DeletePasswordChangeData(ctx, userID)
+	s.sendSessionRevokedEmail(ctx, userID, "Your password was changed and all active sessions were revoked.")
+
+	return &dto.MessageResponse{Message: "password updated successfully"}, nil
+}
+
 func toUserResponse(user *model.User) dto.UserResponse {
 	return dto.UserResponse{
 		ID:              user.ID,

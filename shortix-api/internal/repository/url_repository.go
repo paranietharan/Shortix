@@ -16,6 +16,8 @@ type URLRepository interface {
 	GetByID(ctx context.Context, id string) (*model.URL, error)
 	Delete(ctx context.Context, id string) error
 	IsAliasAvailable(ctx context.Context, alias string) (bool, error)
+	ListByUser(ctx context.Context, userID string, page, limit int) ([]*model.URL, int64, error)
+	ExistsByCustomAlias(ctx context.Context, alias string) (bool, error)
 }
 
 type urlRepository struct {
@@ -175,4 +177,57 @@ func (r *urlRepository) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM urls WHERE id = $1;`
 	_, err := r.db.Exec(ctx, query, id)
 	return err
+}
+
+func (r *urlRepository) ListByUser(ctx context.Context, userID string, page, limit int) ([]*model.URL, int64, error) {
+	offset := (page - 1) * limit
+
+	// Get total count
+	var total int64
+	countQuery := `SELECT COUNT(*) FROM urls WHERE user_id = $1`
+	err := r.db.QueryRow(ctx, countQuery, userID).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query := `
+	SELECT id, user_id, long_url, short_code, custom_alias, expires_at, created_at
+	FROM urls
+	WHERE user_id = $1
+	ORDER BY created_at DESC
+	LIMIT $2 OFFSET $3;
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var urls []*model.URL
+	for rows.Next() {
+		var url model.URL
+		err := rows.Scan(
+			&url.ID,
+			&url.UserID,
+			&url.LongURL,
+			&url.ShortCode,
+			&url.CustomAlias,
+			&url.ExpiresAt,
+			&url.CreatedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		urls = append(urls, &url)
+	}
+
+	return urls, total, nil
+}
+
+func (r *urlRepository) ExistsByCustomAlias(ctx context.Context, alias string) (bool, error) {
+	query := `SELECT EXISTS (SELECT 1 FROM urls WHERE custom_alias = $1)`
+	var exists bool
+	err := r.db.QueryRow(ctx, query, alias).Scan(&exists)
+	return exists, err
 }
