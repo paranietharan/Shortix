@@ -631,14 +631,21 @@ func (s *AuthService) VerifyPasswordChange(ctx context.Context, userID, otp stri
 
 func toUserResponse(user *model.User) dto.UserResponse {
 	return dto.UserResponse{
-		ID:              user.ID,
-		Email:           user.Email,
-		Role:            user.Role,
-		IsActive:        user.IsActive,
-		IsEmailVerified: user.IsEmailVerified,
-		LastLoginAt:     user.LastLoginAt,
+		ID:                user.ID,
+		Email:             user.Email,
+		FirstName:         user.FirstName,
+		LastName:          user.LastName,
+		ProfilePictureURL: user.ProfilePictureURL,
+		Bio:               user.Bio,
+		PhoneNumber:       user.PhoneNumber,
+		Role:              user.Role,
+		IsActive:          user.IsActive,
+		IsEmailVerified:   user.IsEmailVerified,
+		CreatedAt:         user.CreatedAt,
+		LastLoginAt:       user.LastLoginAt,
 	}
 }
+
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
@@ -732,4 +739,85 @@ func (s *AuthService) sendEmailBestEffort(ctx context.Context, to, subject, temp
 	if err := s.emails.SendTemplate(ctx, to, subject, templateName, data); err != nil {
 		s.logger.Error("send email failed", "error", err, "template", templateName, "recipient", to)
 	}
+}
+
+func (s *AuthService) UpdateProfile(ctx context.Context, userID string, req *dto.UpdateProfileRequest) error {
+	fields := make(map[string]interface{})
+	if req.FirstName != nil {
+		fields["first_name"] = *req.FirstName
+	}
+	if req.LastName != nil {
+		fields["last_name"] = *req.LastName
+	}
+	if req.ProfilePictureURL != nil {
+		fields["profile_picture_url"] = *req.ProfilePictureURL
+	}
+	if req.Bio != nil {
+		fields["bio"] = *req.Bio
+	}
+	if req.PhoneNumber != nil {
+		fields["phone_number"] = *req.PhoneNumber
+	}
+
+	if err := s.users.UpdatePartial(ctx, userID, fields); err != nil {
+		s.logger.Error("update profile failed", "error", err, "user_id", userID)
+		return apperrors.InternalServerError()
+	}
+	return nil
+}
+
+func (s *AuthService) GetUserProfile(ctx context.Context, userID string) (*dto.UserResponse, error) {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.ErrUserNotFound
+		}
+		s.logger.Error("get user profile failed", "error", err, "user_id", userID)
+		return nil, apperrors.InternalServerError()
+	}
+	resp := toUserResponse(user)
+	return &resp, nil
+}
+
+func (s *AuthService) AdminDeactivateUser(ctx context.Context, userID string) error {
+	if err := s.users.DeactivateUser(ctx, userID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperrors.ErrUserNotFound
+		}
+		s.logger.Error("admin deactivate user failed", "error", err, "user_id", userID)
+		return apperrors.InternalServerError()
+	}
+
+	if err := s.sessions.RevokeByUser(ctx, userID); err != nil {
+		s.logger.Error("revoke user sessions failed after deactivation", "error", err, "user_id", userID)
+	}
+
+	return nil
+}
+
+func (s *AuthService) AdminListUsers(ctx context.Context, page, limit int) (*dto.ListUsersResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	users, total, err := s.users.ListUsers(ctx, page, limit)
+	if err != nil {
+		s.logger.Error("admin list users failed", "error", err)
+		return nil, apperrors.InternalServerError()
+	}
+
+	var userResponses []dto.UserResponse
+	for _, u := range users {
+		userResponses = append(userResponses, toUserResponse(u))
+	}
+
+	return &dto.ListUsersResponse{
+		Users: userResponses,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	}, nil
 }

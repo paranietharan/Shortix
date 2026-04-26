@@ -52,10 +52,21 @@ func NewRouter(
 	{
 		me := v1.Group("/users/me")
 		{
+			me.GET("", authHandler.GetProfile)
+			me.PATCH("", authHandler.UpdateProfile)
 			me.POST("/email/request", authHandler.RequestEmailChange)
 			me.POST("/email/verify", authHandler.VerifyEmailChange)
 			me.POST("/password/request", authHandler.RequestPasswordChange)
 			me.POST("/password/verify", authHandler.VerifyPasswordChange)
+		}
+
+		admin := v1.Group("/admin")
+		admin.Use(authMW.RequireRoles("ADMIN"))
+		{
+			admin.GET("/users", authHandler.AdminListUsers)
+			admin.PATCH("/users/:id/deactivate", authHandler.AdminDeactivateUser)
+			admin.DELETE("/users/:id", authHandler.AdminDeleteUser)
+			admin.DELETE("/urls/:id", urlHandler.AdminDeleteURL)
 		}
 	}
 

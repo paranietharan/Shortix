@@ -18,6 +18,9 @@ type UserRepository interface {
 	MarkEmailVerified(ctx context.Context, email string, verifiedAt time.Time) error
 	UpdatePassword(ctx context.Context, userID, passwordHash string) error
 	UpdateEmail(ctx context.Context, userID, email string) error
+	UpdatePartial(ctx context.Context, userID string, fields map[string]interface{}) error
+	DeactivateUser(ctx context.Context, userID string) error
+	ListUsers(ctx context.Context, page, limit int) ([]*model.User, int, error)
 }
 
 type PostgresUserRepository struct {
@@ -42,6 +45,7 @@ func (r *PostgresUserRepository) GetByEmail(ctx context.Context, email string) (
 	q := `
 		SELECT id, email, password_hash, role, is_active, is_email_verified, email_verified_at,
 		       last_login_at, last_login_ip::text, last_login_user_agent, last_login_device,
+		       first_name, last_name, profile_picture_url, bio, phone_number,
 		       created_at, updated_at
 		FROM users
 		WHERE email = $1
@@ -60,6 +64,11 @@ func (r *PostgresUserRepository) GetByEmail(ctx context.Context, email string) (
 		&lastLoginIP,
 		&user.LastLoginUserAgent,
 		&user.LastLoginDevice,
+		&user.FirstName,
+		&user.LastName,
+		&user.ProfilePictureURL,
+		&user.Bio,
+		&user.PhoneNumber,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -77,6 +86,7 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, userID string) (*m
 	q := `
 		SELECT id, email, password_hash, role, is_active, is_email_verified, email_verified_at,
 		       last_login_at, last_login_ip::text, last_login_user_agent, last_login_device,
+		       first_name, last_name, profile_picture_url, bio, phone_number,
 		       created_at, updated_at
 		FROM users
 		WHERE id = $1
@@ -95,6 +105,11 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, userID string) (*m
 		&lastLoginIP,
 		&user.LastLoginUserAgent,
 		&user.LastLoginDevice,
+		&user.FirstName,
+		&user.LastName,
+		&user.ProfilePictureURL,
+		&user.Bio,
+		&user.PhoneNumber,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -158,4 +173,77 @@ func (r *PostgresUserRepository) UpdateEmail(ctx context.Context, userID, email 
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func (r *PostgresUserRepository) UpdatePartial(ctx context.Context, userID string, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	query := "UPDATE users SET "
+	args := []interface{}{}
+	argID := 1
+
+	for k, v := range fields {
+		query += k + " = $" + string(rune('0'+argID)) + ", "
+		args = append(args, v)
+		argID++
+	}
+
+	query += "updated_at = NOW() WHERE id = $" + string(rune('0'+argID))
+	args = append(args, userID)
+
+	cmd, err := r.db.Exec(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) DeactivateUser(ctx context.Context, userID string) error {
+	q := `UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`
+	cmd, err := r.db.Exec(ctx, q, userID)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) ListUsers(ctx context.Context, page, limit int) ([]*model.User, int, error) {
+	offset := (page - 1) * limit
+
+	var total int
+	err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	q := `
+		SELECT id, email, role, is_active, is_email_verified, created_at
+		FROM users
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+	rows, err := r.db.Query(ctx, q, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []*model.User
+	for rows.Next() {
+		u := &model.User{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.IsActive, &u.IsEmailVerified, &u.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		users = append(users, u)
+	}
+
+	return users, total, nil
 }

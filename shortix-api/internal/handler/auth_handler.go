@@ -270,16 +270,86 @@ func (h *AuthHandler) VerifyPasswordChange(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *AuthHandler) OwnerOnly(c *gin.Context) {
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "owner-only endpoint"})
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	var req dto.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, apperrors.ErrValidation)
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(c)
+	if !ok {
+		h.writeError(c, apperrors.ErrUnauthorized)
+		return
+	}
+
+	if err := h.svc.UpdateProfile(c.Request.Context(), userID, &req); err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, dto.MessageResponse{Message: "profile updated successfully"})
 }
 
-func (h *AuthHandler) AdminOnly(c *gin.Context) {
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "admin-only endpoint"})
+func (h *AuthHandler) GetProfile(c *gin.Context) {
+	userID, ok := middleware.UserIDFromContext(c)
+	if !ok {
+		h.writeError(c, apperrors.ErrUnauthorized)
+		return
+	}
+
+	resp, err := h.svc.GetUserProfile(c.Request.Context(), userID)
+	if err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
-func (h *AuthHandler) AdminOwner(c *gin.Context) {
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "admin-owner endpoint"})
+func (h *AuthHandler) AdminDeactivateUser(c *gin.Context) {
+	userID := c.Param("id")
+	if userID == "" {
+		h.writeError(c, apperrors.ErrBadRequest)
+		return
+	}
+
+	if err := h.svc.AdminDeactivateUser(c.Request.Context(), userID); err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, dto.MessageResponse{Message: "user deactivated successfully"})
+}
+
+func (h *AuthHandler) AdminDeleteUser(c *gin.Context) {
+	userID := c.Param("id")
+	if userID == "" {
+		h.writeError(c, apperrors.ErrBadRequest)
+		return
+	}
+
+	if err := h.svc.AdminDeactivateUser(c.Request.Context(), userID); err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, dto.MessageResponse{Message: "user soft deleted successfully"})
+}
+
+func (h *AuthHandler) AdminListUsers(c *gin.Context) {
+	var query struct {
+		Page  int `form:"page,default=1" binding:"omitempty,min=1"`
+		Limit int `form:"limit,default=20" binding:"omitempty,min=1,max=100"`
+	}
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		h.writeError(c, apperrors.ErrValidation)
+		return
+	}
+
+	resp, err := h.svc.AdminListUsers(c.Request.Context(), query.Page, query.Limit)
+	if err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *AuthHandler) writeError(c *gin.Context, appErr *apperrors.AppError) {
