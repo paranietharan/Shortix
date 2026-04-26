@@ -186,6 +186,90 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+func (h *AuthHandler) RequestEmailChange(c *gin.Context) {
+	var req dto.EmailChangeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, apperrors.ErrValidation)
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(c)
+	if !ok {
+		h.writeError(c, apperrors.ErrUnauthorized)
+		return
+	}
+
+	resp, err := h.svc.RequestEmailChange(c.Request.Context(), userID, req.NewEmail)
+	if err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) VerifyEmailChange(c *gin.Context) {
+	var req dto.VerifyOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, apperrors.ErrValidation)
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(c)
+	if !ok {
+		h.writeError(c, apperrors.ErrUnauthorized)
+		return
+	}
+
+	resp, err := h.svc.VerifyEmailChange(c.Request.Context(), userID, req.OTP)
+	if err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) RequestPasswordChange(c *gin.Context) {
+	var req dto.PasswordChangeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, apperrors.ErrValidation)
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(c)
+	if !ok {
+		h.writeError(c, apperrors.ErrUnauthorized)
+		return
+	}
+
+	resp, err := h.svc.RequestPasswordChange(c.Request.Context(), userID, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) VerifyPasswordChange(c *gin.Context) {
+	var req dto.VerifyOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, apperrors.ErrValidation)
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(c)
+	if !ok {
+		h.writeError(c, apperrors.ErrUnauthorized)
+		return
+	}
+
+	resp, err := h.svc.VerifyPasswordChange(c.Request.Context(), userID, req.OTP)
+	if err != nil {
+		h.writeError(c, apperrors.AsAppError(err))
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 func (h *AuthHandler) OwnerOnly(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "owner-only endpoint"})
 }

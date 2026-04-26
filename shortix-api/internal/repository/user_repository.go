@@ -17,6 +17,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, userID string) (*model.User, error)
 	MarkEmailVerified(ctx context.Context, email string, verifiedAt time.Time) error
 	UpdatePassword(ctx context.Context, userID, passwordHash string) error
+	UpdateEmail(ctx context.Context, userID, email string) error
 }
 
 type PostgresUserRepository struct {
@@ -133,6 +134,23 @@ func (r *PostgresUserRepository) UpdatePassword(ctx context.Context, userID, pas
 		WHERE id = $1
 	`
 	cmd, err := r.db.Exec(ctx, q, userID, passwordHash)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) UpdateEmail(ctx context.Context, userID, email string) error {
+	q := `
+		UPDATE users
+		SET email = $2,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+	cmd, err := r.db.Exec(ctx, q, userID, email)
 	if err != nil {
 		return err
 	}
