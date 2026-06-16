@@ -73,8 +73,8 @@ func Load() *Config {
 		RateLimitLoginMax:      getEnvInt("RATE_LIMIT_LOGIN_MAX", 10),
 		RateLimitForgotPassMax: getEnvInt("RATE_LIMIT_FORGOT_PASSWORD_MAX", 5),
 		BaseURL:                getEnv("BASE_URL", "http://localhost:8080"),
-		RunMigrations:          getEnvBool("RUN_MIGRATIONS", true),
-		RunSeed:                getEnvBool("RUN_SEED", true),
+		RunMigrations:          getEnvBool("RUN_MIGRATIONS", getEnvBool("MIGRATION_RUN", true)),
+		RunSeed:                getEnvBool("RUN_SEED", getEnvBool("MIGRATION_RUN", true)),
 	}
 }
 
