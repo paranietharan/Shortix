@@ -36,6 +36,9 @@ type Config struct {
 	RateLimitLoginMax      int
 	RateLimitForgotPassMax int
 	BaseURL                string
+
+	RunMigrations bool
+	RunSeed       bool
 }
 
 func Load() *Config {
@@ -70,6 +73,8 @@ func Load() *Config {
 		RateLimitLoginMax:      getEnvInt("RATE_LIMIT_LOGIN_MAX", 10),
 		RateLimitForgotPassMax: getEnvInt("RATE_LIMIT_FORGOT_PASSWORD_MAX", 5),
 		BaseURL:                getEnv("BASE_URL", "http://localhost:8080"),
+		RunMigrations:          getEnvBool("RUN_MIGRATIONS", true),
+		RunSeed:                getEnvBool("RUN_SEED", true),
 	}
 }
 
@@ -96,6 +101,13 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		if err == nil {
 			return parsed
 		}
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		return value == "true" || value == "1"
 	}
 	return defaultValue
 }

@@ -38,19 +38,27 @@ func main() {
 		log.Fatalf("database ping failed: %v", err)
 	}
 
-	// Run Migrations
-	migrationRunner := runner.MigrationRunner{
-		SourceDir: "file://database/migrations",
-		DBURL:     cfg.DatabaseURL,
-	}
-	if err := migrationRunner.Up(); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+	if cfg.RunMigrations {
+		// Run Migrations
+		migrationRunner := runner.MigrationRunner{
+			SourceDir: "file://database/migrations",
+			DBURL:     cfg.DatabaseURL,
+		}
+		if err := migrationRunner.Up(); err != nil {
+			log.Fatalf("failed to run migrations: %v", err)
+		}
+	} else {
+		logger.Info("skipping migrations as requested")
 	}
 
-	// Run Seeds
-	seedRunner := runner.NewSeedRunner(db, cfg)
-	if err := seedRunner.Run(ctx); err != nil {
-		log.Fatalf("failed to run seeds: %v", err)
+	if cfg.RunSeed {
+		// Run Seeds
+		seedRunner := runner.NewSeedRunner(db, cfg)
+		if err := seedRunner.Run(ctx); err != nil {
+			log.Fatalf("failed to run seeds: %v", err)
+		}
+	} else {
+		logger.Info("skipping seeds as requested")
 	}
 
 	redisClient := redis.NewClient(&redis.Options{
