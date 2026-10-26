@@ -31,7 +31,7 @@ services:
 
   api:
     build:
-      context: ./shortix-api
+      context: .
       dockerfile: Dockerfile
     container_name: shortix-api
     ports:
