@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     container_name: shortix-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: shortix
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-shortix}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d shortix" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-shortix}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,11 +20,23 @@ services:
     image: redis:7-alpine
     container_name: shortix-redis
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: shortix-mailpit
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: [ "CMD", "/mailpit", "readyz" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,35 +47,48 @@ services:
       dockerfile: Dockerfile
     container_name: shortix-api
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - APP_ENV=development
-      - PORT=8080
-      - DATABASE_URL=postgres://postgres:password@db:5432/shortix?sslmode=disable
-      - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=
-      - REDIS_DB=0
-      - JWT_SECRET=1b54ca0bb8017a3a639ad20632bf2b8b99b71f63
-      - BASE_URL=http://localhost:8080
-      - MIGRATION_RUN=true
-      - SEED_ADMIN_EMAIL=admin@shortix.com
-      - SEED_ADMIN_PASSWORD=Admin@12345
-      - SEED_USER_EMAIL=user@shortix.com
-      - SEED_USER_PASSWORD=User@12345
+      - APP_ENV=${APP_ENV:-development}
+      - PORT=${PORT:-8080}
+      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shortix}?sslmode=disable}
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - SMTP_HOST=${SMTP_HOST:-mailpit}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@shortix.local}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Shortix}
+      - JWT_SECRET=${JWT_SECRET:-1b54ca0bb8017a3a639ad20632bf2b8b99b71f63}
+      - BASE_URL=${BASE_URL:-http://localhost:8080}
+      - MIGRATION_RUN=${MIGRATION_RUN:-true}
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
+      - RUN_SEED=${RUN_SEED:-true}
+      - SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL:-admin@shortix.com}
+      - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-Admin@12345}
+      - SEED_USER_EMAIL=${SEED_USER_EMAIL:-user@shortix.com}
+      - SEED_USER_PASSWORD=${SEED_USER_PASSWORD:-User@12345}
 
-      - BCRYPT_COST=12
-      - ACCESS_TOKEN_TTL=15m
-      - REFRESH_TOKEN_TTL=720h
-      - EMAIL_VERIFY_OTP_TTL=10m
-      - PASSWORD_RESET_OTP_TTL=10m
-      - PASSWORD_RESET_TEMP_TTL=15m
-      - RATE_LIMIT_WINDOW=1m
-      - RATE_LIMIT_LOGIN_MAX=10
-      - RATE_LIMIT_FORGOT_PASSWORD_MAX=5
+      - BCRYPT_COST=${BCRYPT_COST:-12}
+      - ACCESS_TOKEN_TTL=${ACCESS_TOKEN_TTL:-15m}
+      - REFRESH_TOKEN_TTL=${REFRESH_TOKEN_TTL:-720h}
+      - EMAIL_VERIFY_OTP_TTL=${EMAIL_VERIFY_OTP_TTL:-10m}
+      - PASSWORD_RESET_OTP_TTL=${PASSWORD_RESET_OTP_TTL:-10m}
+      - PASSWORD_RESET_TEMP_TTL=${PASSWORD_RESET_TEMP_TTL:-15m}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-1m}
+      - RATE_LIMIT_LOGIN_MAX=${RATE_LIMIT_LOGIN_MAX:-10}
+      - RATE_LIMIT_FORGOT_PASSWORD_MAX=${RATE_LIMIT_FORGOT_PASSWORD_MAX:-5}
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      mailpit:
         condition: service_healthy
 
 volumes:
