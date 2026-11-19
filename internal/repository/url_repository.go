@@ -107,7 +107,8 @@ func (r *urlRepository) GetByLongURLAndUser(ctx context.Context, longURL string,
 	query := `
 	SELECT id, user_id, long_url, short_code, custom_alias, expires_at, created_at
 	FROM urls
-	WHERE long_url = $1 AND user_id = $2;
+	WHERE long_url = $1 AND user_id = $2 AND (expires_at IS NULL OR expires_at > NOW())
+ ORDER BY created_at DESC LIMIT 1;
 	`
 
 	var url model.URL

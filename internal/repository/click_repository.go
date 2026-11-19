@@ -10,7 +10,7 @@ import (
 
 type ClickRepository interface {
 	Create(ctx context.Context, click *model.Click) error
-	GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error)
+	GetAnalytics(ctx context.Context, urlID, userID string) (*dto.AnalyticsResponse, error)
 }
 
 type clickRepository struct {
@@ -40,11 +40,11 @@ func (r *clickRepository) Create(ctx context.Context, click *model.Click) error 
 	).Scan(&click.ID, &click.ClickedAt)
 }
 
-func (r *clickRepository) GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error) {
+func (r *clickRepository) GetAnalytics(ctx context.Context, urlID, userID string) (*dto.AnalyticsResponse, error) {
 	var response dto.AnalyticsResponse
 
 	// Total Clicks
-	err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM clicks WHERE url_id = $1", urlID).Scan(&response.TotalClicks)
+	err := r.db.QueryRow(ctx, "SELECT (SELECT COUNT(*) FROM clicks WHERE url_id = urls.id) FROM urls WHERE id = $1 AND user_id = $2", urlID, userID).Scan(&response.TotalClicks)
 	if err != nil {
 		return nil, err
 	}
