@@ -18,17 +18,17 @@ import (
 type URLService interface {
 	CreateURL(ctx context.Context, userID string, req *dto.CreateURLRequest) (*dto.CreateURLResponse, bool, error)
 	GetRedirectURL(ctx context.Context, shortCode string, clickData *model.Click) (string, error)
-	GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error)
+	GetAnalytics(ctx context.Context, urlID, userID string) (*dto.AnalyticsResponse, error)
 	DeleteURL(ctx context.Context, urlID string, userID string, role string) error
 	ListURLs(ctx context.Context, userID string, page, limit int) (*dto.ListURLsResponse, error)
 }
 
 type urlService struct {
-	urlRepo      repository.URLRepository
-	clickRepo    repository.ClickRepository
-	cacheRepo    repository.CacheRepository
-	analyticsCh  chan *model.Click
-	baseURL      string
+	urlRepo     repository.URLRepository
+	clickRepo   repository.ClickRepository
+	cacheRepo   repository.CacheRepository
+	analyticsCh chan *model.Click
+	baseURL     string
 }
 
 func NewURLService(
@@ -175,7 +175,7 @@ func (s *urlService) GetRedirectURL(ctx context.Context, shortCode string, click
 	if url.ExpiresAt != nil {
 		ttl = time.Until(*url.ExpiresAt)
 	}
-	
+
 	// Cache value format: "id|long_url" to easily track analytics even on cache hit
 	cacheValue := fmt.Sprintf("%s|%s", url.ID.String(), url.LongURL)
 	_ = s.cacheRepo.Set(ctx, "url:"+shortCode, cacheValue, ttl)
@@ -211,8 +211,8 @@ func (s *urlService) processAnalytics() {
 	}
 }
 
-func (s *urlService) GetAnalytics(ctx context.Context, urlID string) (*dto.AnalyticsResponse, error) {
-	return s.clickRepo.GetAnalytics(ctx, urlID)
+func (s *urlService) GetAnalytics(ctx context.Context, urlID, userID string) (*dto.AnalyticsResponse, error) {
+	return s.clickRepo.GetAnalytics(ctx, urlID, userID)
 }
 
 func (s *urlService) DeleteURL(ctx context.Context, urlID string, userID string, role string) error {

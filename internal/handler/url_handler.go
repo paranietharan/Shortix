@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"errors"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"shortix-api/internal/dto"
 	"shortix-api/internal/middleware"
@@ -82,7 +84,11 @@ func (h *URLHandler) Redirect(c *gin.Context) {
 func (h *URLHandler) GetAnalytics(c *gin.Context) {
 	urlID := c.Param("id")
 
-	res, err := h.urlService.GetAnalytics(c.Request.Context(), urlID)
+	res, err := h.urlService.GetAnalytics(c.Request.Context(), urlID, c.GetString(middleware.ContextUserIDKey))
+	if errors.Is(err, pgx.ErrNoRows) {
+		response.Error(c.Writer, http.StatusNotFound, "Link not found")
+		return
+	}
 	if err != nil {
 		response.Error(c.Writer, http.StatusInternalServerError, "Failed to fetch analytics")
 		return

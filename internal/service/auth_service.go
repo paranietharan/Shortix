@@ -646,7 +646,6 @@ func toUserResponse(user *model.User) dto.UserResponse {
 	}
 }
 
-
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }

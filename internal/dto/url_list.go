@@ -16,10 +16,10 @@ type URLResponse struct {
 }
 
 type ListURLsResponse struct {
-	URLs []URLResponse `json:"urls"`
-	Total int64        `json:"total"`
-	Page  int          `json:"page"`
-	Limit int          `json:"limit"`
+	URLs  []URLResponse `json:"urls"`
+	Total int64         `json:"total"`
+	Page  int           `json:"page"`
+	Limit int           `json:"limit"`
 }
 
 type PaginationQuery struct {
